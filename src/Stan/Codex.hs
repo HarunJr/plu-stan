@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE LambdaCase #-}
+
 {-# LANGUAGE NumericUnderscores #-}
 
 module Stan.Codex
@@ -12,12 +12,12 @@ import Colourista (bold, cyan, errorMessage, infoMessage, successMessage, warnin
 import Data.Aeson (FromJSON, ToJSON, parseJSON, withObject, (.:))
 import qualified Data.Aeson as Aeson
 import qualified Data.Text as T
-import qualified Data.Text.IO as TIO
+
 import Control.Exception (try)
 import Control.Concurrent (threadDelay)
 import System.Directory.Recursive (getDirRecursive)
 import Network.HTTP.Simple (httpLBS, getResponseBody, getResponseStatusCode, setRequestBodyJSON, setRequestHeaders, parseRequest, HttpException)
-import qualified System.Environment as Env
+
 import Data.List (isSuffixOf)
 
 -- | Run the Codex AI scanner.
@@ -25,7 +25,7 @@ runCodex :: IO ()
 runCodex = do
     putStrLn $ formatWith [bold, cyan] "Starting AI-Powered Vulnerability Scanner (Integrated Stan Module)..."
     
-    maybeKey <- Env.lookupEnv "GEMINI_API_KEY"
+    maybeKey <- lookupEnv "GEMINI_API_KEY"
     case maybeKey of
         Just key -> do
             successMessage "Gemini API Key detected. Using Google Gemini..."
@@ -38,7 +38,7 @@ runCodex = do
 runScan :: String -> IO ()
 runScan key = do
     files <- getPlutusFiles "src"
-    infoMessage $ "Found " <> T.pack (show (length files)) <> " source files."
+    infoMessage $ "Found " <> show (length files) <> " source files."
 
     -- STRICT SEQUENTIAL EXECUTION
     -- Gemini Free Tier allows ~15 Requests Per Minute (1 req every 4 seconds).
@@ -48,22 +48,20 @@ runScan key = do
 -- | Core orchestration logic for a single file
 processFile :: String -> FilePath -> IO ()
 processFile key file = do
-    content <- TIO.readFile file
-    if isPlinthFile content
-        then do
-             TIO.putStrLn $ "  " <> formatWith [bold] ("[ANALYZING] " <> T.pack file <> "...")
-             -- Enforce Rate Limit: Wait 4 seconds (15 RPM)
-             threadDelay 4_000_000 
-             
-             -- Retry logic handles occasional hiccups
-             result <- retryWithBackoff 5 (callGemini key content)
-             case result of
-                 Right (Just analysis) -> do
-                     warningMessage ("  -> Report for " <> T.pack file <> ":")
-                     putStrLn analysis
-                 Right Nothing -> pure () -- No vulnerability found or empty response
-                 Left err -> handleError file err
-        else pure ()
+    content <- readFileText file
+    when (isPlinthFile content) $ do
+         putTextLn $ "  " <> formatWith [bold] ("[ANALYZING] " <> toText file <> "...")
+         -- Enforce Rate Limit: Wait 4 seconds (15 RPM)
+         threadDelay 4_000_000 
+         
+         -- Retry logic handles occasional hiccups
+         result <- retryWithBackoff 5 (callGemini key content)
+         case result of
+             Right (Just analysis) -> do
+                 warningMessage ("  -> Report for " <> toText file <> ":")
+                 putStrLn analysis
+             Right Nothing -> pass -- No vulnerability found or empty response
+             Left err -> handleError file err
 
 -- | Retry an action with exponential backoff if it returns ApiError 429
 retryWithBackoff :: Int -> IO (Either CodexError a) -> IO (Either CodexError a)
@@ -74,7 +72,7 @@ retryWithBackoff retries action = do
         Left (ApiError 429) -> do
             -- Wait 10s, 20s... aggressive backoff if we still hit it
             let delay = (6 - retries) * 10
-            warningMessage $ "  Rate limit hit. Retrying in " <> T.pack (show delay) <> " seconds..."
+            warningMessage $ "  Rate limit hit. Retrying in " <> show delay <> " seconds..."
             threadDelay (delay * 1_000_000)
             retryWithBackoff (retries - 1) action
         _ -> return result
@@ -90,10 +88,10 @@ isPlinthFile content =
 handleError :: FilePath -> CodexError -> IO ()
 handleError file err = do
     let msg = case err of
-            NetworkError e -> T.pack $ displayException e
-            ApiError code  -> "API returned status code: " <> T.pack (show code)
-            JsonError e    -> "Failed to parse JSON response: " <> T.pack e
-    errorMessage $ "Failed to analyze " <> T.pack file <> ": " <> msg
+            NetworkError e -> toText $ displayException e
+            ApiError code  -> "API returned status code: " <> show code
+            JsonError e    -> "Failed to parse JSON response: " <> toText e
+    errorMessage $ "Failed to analyze " <> toText file <> ": " <> msg
 
 getPlutusFiles :: FilePath -> IO [FilePath]
 getPlutusFiles dir = do
@@ -115,8 +113,7 @@ callGemini key code = do
     let payload = GeminiRequest { contents = [ GeminiContent { parts = [ GeminiPart { text = prompt } ] } ] }
     
     let req = setRequestBodyJSON payload 
-            $ setRequestHeaders [("Content-Type", "application/json")] 
-            $ initialReq
+            $ setRequestHeaders [("Content-Type", "application/json")] initialReq
 
     -- Catch network exceptions
     result <- try (httpLBS req)
@@ -133,24 +130,24 @@ callGemini key code = do
                             let combinedText = T.concat (map text partsList)
                             if T.null combinedText 
                                 then return (Right Nothing) 
-                                else return (Right $ Just $ T.unpack combinedText)
+                                else return (Right $ Just $ toString combinedText)
                         _ -> return $ Left (JsonError "Invalid JSON structure or no candidates")
                 else return $ Left (ApiError status)
 
 -- | JSON Data Structures
-data GeminiRequest = GeminiRequest { contents :: [GeminiContent] } deriving stock (Show, Eq, Generic)
+newtype GeminiRequest = GeminiRequest { contents :: [GeminiContent] } deriving stock (Show, Eq, Generic)
 instance ToJSON GeminiRequest
 
-data GeminiContent = GeminiContent { parts :: [GeminiPart] } deriving stock (Show, Eq, Generic)
+newtype GeminiContent = GeminiContent { parts :: [GeminiPart] } deriving stock (Show, Eq, Generic)
 instance ToJSON GeminiContent
 
-data GeminiPart = GeminiPart { text :: T.Text } deriving stock (Show, Eq, Generic)
+newtype GeminiPart = GeminiPart { text :: T.Text } deriving stock (Show, Eq, Generic)
 instance ToJSON GeminiPart
 
-data GeminiResponse = GeminiResponse { candidates :: [GeminiCandidate] } deriving stock (Show, Eq, Generic)
+newtype GeminiResponse = GeminiResponse { candidates :: [GeminiCandidate] } deriving stock (Show, Eq, Generic)
 instance FromJSON GeminiResponse
 
-data GeminiCandidate = GeminiCandidate { content :: GeminiContent } deriving stock (Show, Eq, Generic)
+newtype GeminiCandidate = GeminiCandidate { content :: GeminiContent } deriving stock (Show, Eq, Generic)
 instance FromJSON GeminiCandidate
 
 instance FromJSON GeminiContent where
