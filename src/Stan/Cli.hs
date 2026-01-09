@@ -50,6 +50,7 @@ data StanCommand
     | StanTomlToCli !TomlToCliArgs  -- ^ @stan toml-to-cli@
     | StanCliToToml !CliToTomlArgs  -- ^ @stan cli-to-toml@
     | StanInspectionsToMd  -- ^ @stan inspections-to-md@
+    | StanCodex  -- ^ @stan codex@
 
 -- | Options used for the main @stan@ command.
 data StanArgs = StanArgs
@@ -109,6 +110,7 @@ stan =  stanInspectionP
     <|> stanTomlToCliP
     <|> stanCliToTomlP
     <|> stanInspectionsToMd
+    <|> stanCodexP
     <|> stanP
 
 -- | @stan@ command parser.
@@ -174,6 +176,14 @@ stanInspectionsToMd = hsubparser
         )
     <> help "Create md with all inspections info"
     <> hidden <> internal
+
+stanCodexP :: Parser StanCommand
+stanCodexP = hsubparser
+    $  command "codex"
+        (info (pure StanCodex)
+             (progDesc "Run AI-Powered Vulnerability Scanner")
+        )
+    <> help "Run AI-Powered Vulnerability Scanner"
 
 hiedirP :: Parser FilePath
 hiedirP = strOption $ mconcat
