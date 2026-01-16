@@ -98,6 +98,13 @@ jobs:
       name: Dogfooding
       run: |
         cabal run stan
+    
+    - if: matrix.os == 'ubuntu-latest'
+      name: AI Vulnerability Scan (Codex)
+      env:
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      run: |
+        cabal run stan -- codex
 
   # As at 2025-07-14, the GitHub-hosted runner for ubuntu-latest comes with
   # Stack 3.7.1 and GHC 9.12.2.

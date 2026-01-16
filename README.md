@@ -54,6 +54,24 @@ So far, Plu-Stan implements the following rules:
 | PLU-STAN-08 | Non-strict let binding used multiple times | Performance | Medium    |
 | PLU-STAN-09 | valueOf in boolean conditions | Security    | Medium    |
 
+## Codex (AI Security Scanner)
+
+Plu-Stan includes **Codex**, an AI-powered module that serves as the "Slither for Plinth". While the core static analyzer finds structural and performance issues, Codex uses Large Language Models (LLMs) to detect:
+
+*   **Logic Errors**: Flaws in validator logic that compile but are insecure.
+*   **Vulnerability Detection**: Known attack vectors (e.g., double satisfaction, unchecked redress).
+*   **Anti-Patterns**: Improper usage of the Plinth framework context.
+
+### Usage
+To use Codex, you need a free Google Gemini API key:
+
+```bash
+export GEMINI_API_KEY="your_api_key"
+cabal run stan -- codex
+```
+
+This runs a security report for every `.hs` file in your project, similar to running `slither .` in a Solidity project.
+
 ## Usage
 [[Back to the Table of Contents] ↑](#table-of-contents)
   
