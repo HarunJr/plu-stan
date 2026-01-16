@@ -47,7 +47,7 @@ import Stan.Toml (configCodec, getTomlConfig, usedTomlFiles)
 import Stan.Codex (runCodex)
 
 import qualified Toml
-import qualified Slist as Slist
+import qualified Slist
 import qualified Data.Set as Set
 import Language.Haskell.Exts
 import Stan.FileInfo (FileInfo(..))

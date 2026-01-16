@@ -240,8 +240,8 @@ analyseNonStrictLetMultiUse insId hie curNode =
             any isBindingCtx identInfo'
 
         isBindingCtx :: ContextInfo -> Bool
-        isBindingCtx (ValBind _ _ _) = True
-        isBindingCtx (PatternBind _ _ _) = True
+        isBindingCtx (ValBind {}) = True
+        isBindingCtx (PatternBind {}) = True
         isBindingCtx _ = False
 
     bindingHasBang :: ByteString -> RealSrcSpan -> Bool
@@ -469,8 +469,8 @@ analyseValueOfInComparison insId hie curNode =
             any isBindingCtx identInfo'
 
         isBindingCtx :: ContextInfo -> Bool
-        isBindingCtx (ValBind _ _ _) = True
-        isBindingCtx (PatternBind _ _ _) = True
+        isBindingCtx (ValBind {}) = True
+        isBindingCtx (PatternBind {}) = True
         isBindingCtx _ = False
 
 
