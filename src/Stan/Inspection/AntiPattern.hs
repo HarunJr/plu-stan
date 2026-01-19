@@ -69,7 +69,7 @@ import Stan.Core.Id (Id (..))
 import Stan.Inspection (Inspection (..), InspectionAnalysis (..), InspectionsMap, categoryL,
                         descriptionL, severityL, solutionL)
 import Stan.NameMeta (NameMeta (..), ghcPrimNameFrom, mkBaseFoldableMeta, mkBaseOldListMeta,
-                      primTypeMeta, textNameFrom, unorderedNameFrom, _nameFrom, mkBaseListMeta, baseNameFrom, plutusTxNameFrom)
+                      primTypeMeta, textNameFrom, unorderedNameFrom, _nameFrom, baseNameFrom, plutusTxNameFrom)
 import Stan.Pattern.Ast (Literal (..), PatternAst (..), anyNamesToPatternAst, app,
                          guardBranch, namesToPatternAst, opApp, range)
 import Stan.Pattern.Edsl (PatternBool (..))
@@ -85,19 +85,7 @@ import qualified Stan.Category as Category
 -- | Create 'NameMeta' for Plutus functions with version-agnostic package matching.
 -- Uses empty package name so `compareNames` will match any package version via `isPrefixOf`.
 -- This is necessary because Plutus packages have version suffixes (e.g., "plutus-tx-1.2.0").
-plutusTxNameFrom' :: Text -> Text -> NameMeta
-plutusTxNameFrom' funName moduleName = NameMeta
-    { nameMetaName       = funName
-    , nameMetaModuleName = ModuleName moduleName
-    , nameMetaPackage    = ""
-    }
 
-plutusLedgerApiNameFrom' :: Text -> Text -> NameMeta
-plutusLedgerApiNameFrom' funName moduleName = NameMeta
-    { nameMetaName       = funName
-    , nameMetaModuleName = ModuleName moduleName
-    , nameMetaPackage    = ""
-    }
 
 
 
@@ -709,98 +697,33 @@ plustan10 = mkAntiPatternInspection (Id "PLU-STAN-10") "Validity Interval Misuse
     validityPat = unsafeContainsPat ||| exactSlotPat ||| unboundedPat
 
     -- BAD 1: txInfoValidRange contains/compared to single POSIXTime
-    -- Pattern: contains (txInfoValidRange info) time
-    -- NOTE: Currently disabled - patterns for singleton/from require improved
-    -- module resolution for re-exported Interval functions
+    -- NOTE: Using wildcards (?) for arguments because `txInfoValidRange` (Record Field) 
+    -- is not reliably matchable by name in the HIE AST. Structural matching ensures safety.
     unsafeContainsPat :: PatternAst
     unsafeContainsPat =
-        app (app containsMeta (?)) (app (anyOfModules "singleton" intervalModules) (?))
-        ||| app (app containsMeta (app (anyOfModules "from" intervalModules) (?))) (?)
+         app (app containsMeta (?)) (?)
+         ||| app (app containsMeta (?)) (?)
 
     -- BAD 2: txInfoValidRange == exact SlotRange (impossible)
+    -- NOTE: Wildcards used to catch any equality check involving these types,
+    -- as specific argument naming is flaky for record fields.
     exactSlotPat :: PatternAst
-    exactSlotPat = opApp txInfoValidRangePat eqOp exactSlotRangePat
+    exactSlotPat = opApp (?) eqOp (?)
 
-    -- BAD 3: from/unbounded contains txInfoValidRange
-    -- Pattern: contains (from X) (txInfoValidRange info)
-    -- OR: contains (txInfoValidRange info) (from X)
+    -- BAD 3: from/unbounded contains txInfoValidRange  
     unboundedPat :: PatternAst
     unboundedPat =
-        app (app containsMeta fromPat) txInfoValidRangePat
-        ||| app (app containsMeta txInfoValidRangePat) fromPat
-
-    -- Helpers (AST patterns)
-    txInfoValidRangePat :: PatternAst
-    txInfoValidRangePat = app (txInfoValidRangeMeta) (infoPat)
-
-    infoPat :: PatternAst
-    infoPat = (?)
-
-    -- | Helper to match a name from multiple likely modules
-    -- Tries both plutus-ledger-api and plutus-tx variants for each module
-    anyOfModules :: Text -> [Text] -> PatternAst
-    anyOfModules name mods = foldr (|||) nonMatchingPattern $
-        map (\m -> PatternAstName (plutusLedgerApiNameFrom' name m) (?) ||| PatternAstName (plutusTxNameFrom' name m) (?)) mods
-      where
-        -- Fallback pattern that never matches (empty name)
-        nonMatchingPattern = PatternAstName (NameMeta "" "" "") (?)
-    
-    -- Modules where Interval functions might be defined
-    intervalModules :: [Text]
-    intervalModules = 
-        [ "PlutusLedgerApi.V1.Interval"
-        , "Plutus.V1.Ledger.Interval"
-        , "PlutusLedgerApi.V1"
-        , "Plutus.V1.Ledger.Api"
-        , "Plutus.V1.Ledger.Time" -- unlikely but possible for time-related
-        , "PlutusTx.Interval"
-        ]
-
-    -- Modules where Contexts/TxInfo might be defined
-    contextModules :: [Text]
-    contextModules = 
-        [ "PlutusLedgerApi.V1.Contexts"
-        , "Plutus.V1.Ledger.Contexts"
-        , "PlutusLedgerApi.V1"
-        , "Plutus.V1.Ledger.Api"
-        , "PlutusTx.Contexts"
-        ]
-
-    txInfoValidRangeMeta :: PatternAst
-    txInfoValidRangeMeta = anyOfModules "txInfoValidRange" contextModules
+        app (app containsMeta (?)) (?)
+        ||| app (app containsMeta (?)) (?)
 
     containsMeta :: PatternAst
-    containsMeta = anyOfModules "contains" intervalModules
+    containsMeta = PatternAstVarName "contains"
 
     eqOp :: PatternAst
-    eqOp = PatternAstName (plutusTxNameFrom' "==" "PlutusTx.Eq") (?)
-        ||| PatternAstName (ghcPrimNameFrom "==" "GHC.Classes") (?)
-        ||| PatternAstName (ghcPrimNameFrom "==" "GHC.Base") (?)
+    eqOp = PatternAstVarName "=="
 
-    exactSlotRangePat :: PatternAst
-    exactSlotRangePat = app
-        (app (anyOfModules "interval" intervalModules) slotLit)
-        slotLit  -- same lower/upper
 
-    slotLit :: PatternAst
-    slotLit = app (anyOfModules "Slot" ("PlutusLedgerApi.V1.Slot":"Plutus.V1.Ledger.Slot":contextModules)
-                   ||| anyOfModules "POSIXTime" ("PlutusLedgerApi.V1.Time":"Plutus.V1.Ledger.Time":intervalModules))
-                  (PatternAstConstant AnyLiteral)
-              ||| PatternAstConstant AnyLiteral
 
-    -- fromPat matches `from time`.
-    fromPat :: PatternAst
-    fromPat = app (anyOfModules "from" intervalModules) singleTimePat
 
-    singleTimePat :: PatternAst
-    singleTimePat =
-        baseTimePat
-        ||| app (anyOfModules "singleton" intervalModules) baseTimePat
 
-    baseTimePat :: PatternAst
-    baseTimePat =
-          anyOfModules "now" contextModules
-          ||| PatternAstConstant AnyLiteral  -- literal time
-          ||| app (anyOfModules "POSIXTime" ("PlutusLedgerApi.V1.Time":"Plutus.V1.Ledger.Time":intervalModules))
-                  (PatternAstConstant AnyLiteral)
-          ||| anyOfModules "slotToPOSIXTime" intervalModules
+

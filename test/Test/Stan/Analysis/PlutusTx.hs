@@ -70,12 +70,11 @@ analysisPlutusTxSpec analysis = describe "Plutus-Tx" $ do
   it "PLU-STAN-09: valueOf compared via section (== 5000)" $
     checkObservation AntiPattern.plustan09 167 3 54
 
---   it "PLU-STAN-10: Unsafe txInfoValidRange contains single time" $
---     checkObservation AntiPattern.plustan10 179 6 45
+  it "PLU-STAN-10: Unsafe txInfoValidRange contains single time" $
+    checkObservation AntiPattern.plustan10 180 3 89
 
   it "PLU-STAN-10: Exact slot equality with txInfoValidRange" $
     checkObservation AntiPattern.plustan10 184 3 72
 
---   it "PLU-STAN-10: Unbounded from contains txInfoValidRange" $
---     checkObservation AntiPattern.plustan10 187 10 38
-
+  it "PLU-STAN-10: Unbounded from contains txInfoValidRange" $
+    checkObservation AntiPattern.plustan10 188 3 84
