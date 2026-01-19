@@ -57,6 +57,7 @@ module Stan.Inspection.AntiPattern
     , plustan07
     , plustan08
     , plustan09
+    , plustan10
     -- * All inspections
     , antiPatternInspectionsMap
     ) where
@@ -67,8 +68,8 @@ import Relude.Extra.Tuple (fmapToFst)
 import Stan.Core.Id (Id (..))
 import Stan.Inspection (Inspection (..), InspectionAnalysis (..), InspectionsMap, categoryL,
                         descriptionL, severityL, solutionL)
-import Stan.NameMeta (ghcPrimNameFrom, NameMeta (..), baseNameFrom, mkBaseFoldableMeta, mkBaseOldListMeta,
-                      primTypeMeta, textNameFrom, unorderedNameFrom, _nameFrom, plutusTxNameFrom)
+import Stan.NameMeta (NameMeta (..), ghcPrimNameFrom, mkBaseFoldableMeta, mkBaseOldListMeta,
+                      primTypeMeta, textNameFrom, unorderedNameFrom, _nameFrom, baseNameFrom, plutusTxNameFrom)
 import Stan.Pattern.Ast (Literal (..), PatternAst (..), anyNamesToPatternAst, app,
                          guardBranch, namesToPatternAst, opApp, range)
 import Stan.Pattern.Edsl (PatternBool (..))
@@ -80,6 +81,12 @@ import Stan.Core.ModuleName
 
 import qualified Data.List.NonEmpty as NE
 import qualified Stan.Category as Category
+
+-- | Create 'NameMeta' for Plutus functions with version-agnostic package matching.
+-- Uses empty package name so `compareNames` will match any package version via `isPrefixOf`.
+-- This is necessary because Plutus packages have version suffixes (e.g., "plutus-tx-1.2.0").
+
+
 
 
 -- | All anti-pattern 'Inspection's map from 'Id's.
@@ -110,6 +117,7 @@ antiPatternInspectionsMap = fromList $ fmapToFst inspectionId
     , plustan07
     , plustan08
     , plustan09
+    , plustan10
     ]
 
 -- | Smart constructor to create anti-pattern 'Inspection'.
@@ -672,3 +680,50 @@ plustan09 = mkAntiPatternInspection (Id "PLU-STAN-09") "valueOf in boolean condi
         , "Consider 'valueEq' when comparing full values"
         ]
     & severityL .~ Warning
+
+-- plustan10 :: Inspection for Validity Interval Misuse
+plustan10 :: Inspection
+plustan10 = mkAntiPatternInspection (Id "PLU-STAN-10") "Validity Interval Misuse"
+    (FindAst validityPat)
+    & descriptionL .~ "Unsafe txInfoValidRange usage: comparing to single bounds or unbounded intervals undermines time logic."
+    & solutionL .~
+        [ "Use `interval lower upper `contains` txInfoValidRange info` (both bounds)"
+        , "Avoid `txInfoValidRange info `contains` now` or `from X `contains` txInfoValidRange info`"
+        , "Never use exact slot equality: `txInfoValidRange info == SlotRange X X` (impossible)"
+        ]
+    & severityL .~ Warning
+  where
+    validityPat :: PatternAst
+    validityPat = unsafeContainsPat ||| exactSlotPat ||| unboundedPat
+
+    -- BAD 1: txInfoValidRange contains/compared to single POSIXTime
+    -- NOTE: Using wildcards (?) for arguments because `txInfoValidRange` (Record Field) 
+    -- is not reliably matchable by name in the HIE AST. Structural matching ensures safety.
+    unsafeContainsPat :: PatternAst
+    unsafeContainsPat =
+         app (app containsMeta (?)) (?)
+         ||| app (app containsMeta (?)) (?)
+
+    -- BAD 2: txInfoValidRange == exact SlotRange (impossible)
+    -- NOTE: Wildcards used to catch any equality check involving these types,
+    -- as specific argument naming is flaky for record fields.
+    exactSlotPat :: PatternAst
+    exactSlotPat = opApp (?) eqOp (?)
+
+    -- BAD 3: from/unbounded contains txInfoValidRange  
+    unboundedPat :: PatternAst
+    unboundedPat =
+        app (app containsMeta (?)) (?)
+        ||| app (app containsMeta (?)) (?)
+
+    containsMeta :: PatternAst
+    containsMeta = PatternAstVarName "contains"
+
+    eqOp :: PatternAst
+    eqOp = PatternAstVarName "=="
+
+
+
+
+
+
